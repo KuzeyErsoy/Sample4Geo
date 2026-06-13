@@ -2,7 +2,7 @@ import time
 import torch
 from tqdm import tqdm
 from .utils import AverageMeter
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 import torch.nn.functional as F
 
 def train(train_config, model, dataloader, loss_function, optimizer, scheduler=None, scaler=None):
@@ -29,7 +29,7 @@ def train(train_config, model, dataloader, loss_function, optimizer, scheduler=N
     for query, reference, ids in bar:
         
         if scaler:
-            with autocast():
+            with autocast('cuda'):
             
                 # data (batches) to device   
                 query = query.to(train_config.device)
@@ -46,21 +46,21 @@ def train(train_config, model, dataloader, loss_function, optimizer, scheduler=N
                   
             scaler.scale(loss).backward()
             
-            # Gradient clipping 
             if train_config.clip_grad:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_value_(model.parameters(), train_config.clip_grad) 
             
-            # Update model parameters (weights)
-            scaler.step(optimizer)
-            scaler.update()
+            if step % train_config.gradient_accumulation == 0:
+                # Update model parameters (weights)
+                scaler.step(optimizer)
+                scaler.update()
 
-            # Zero gradients for next step
-            optimizer.zero_grad()
-            
-            # Scheduler
-            if train_config.scheduler == "polynomial" or train_config.scheduler == "cosine" or train_config.scheduler ==  "constant":
-                scheduler.step()
+                # Zero gradients for next step
+                optimizer.zero_grad()
+                
+                # Scheduler
+                if train_config.scheduler == "polynomial" or train_config.scheduler == "cosine" or train_config.scheduler ==  "constant":
+                    scheduler.step()
    
         else:
         
@@ -79,18 +79,19 @@ def train(train_config, model, dataloader, loss_function, optimizer, scheduler=N
             # Calculate gradient using backward pass
             loss.backward()
             
-            # Gradient clipping 
+                       
             if train_config.clip_grad:
-                torch.nn.utils.clip_grad_value_(model.parameters(), train_config.clip_grad)                  
-            
-            # Update model parameters (weights)
-            optimizer.step()
-            # Zero gradients for next step
-            optimizer.zero_grad()
-            
-            # Scheduler
-            if train_config.scheduler == "polynomial" or train_config.scheduler == "cosine" or train_config.scheduler ==  "constant":
-                scheduler.step()
+                torch.nn.utils.clip_grad_value_(model.parameters(), train_config.clip_grad)        
+                        
+            if step % train_config.gradient_accumulation == 0:
+                # Update model parameters (weights)
+                optimizer.step()
+                # Zero gradients for next step
+                optimizer.zero_grad()
+                
+                # Scheduler
+                if train_config.scheduler == "polynomial" or train_config.scheduler == "cosine" or train_config.scheduler ==  "constant":
+                    scheduler.step()
         
         
         
@@ -125,13 +126,13 @@ def predict(train_config, model, dataloader):
     img_features_list = []
     
     ids_list = []
-    with torch.no_grad():
+    with torch.inference_mode():
         
         for img, ids in bar:
         
             ids_list.append(ids)
             
-            with autocast():
+            with autocast('cuda'):
          
                 img = img.to(train_config.device)
                 img_feature = model(img)

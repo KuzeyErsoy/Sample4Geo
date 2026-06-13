@@ -9,14 +9,17 @@ def evaluate(config,
                   model,
                   query_loader,
                   gallery_loader,
+                  precomputed=None,
                   ranks=[1, 5, 10],
                   step_size=1000,
                   cleanup=True):
-    
-    
-    print("Extract Features:")
-    img_features_query, ids_query = predict(config, model, query_loader)
-    img_features_gallery, ids_gallery = predict(config, model, gallery_loader)
+
+    if precomputed is not None:
+        img_features_query, ids_query, img_features_gallery, ids_gallery = precomputed
+    else:
+        print("Extract Features:")
+        img_features_query, ids_query = predict(config, model, query_loader)
+        img_features_gallery, ids_gallery = predict(config, model, gallery_loader)
     
     gl = ids_gallery.cpu().numpy()
     ql = ids_query.cpu().numpy()
@@ -47,15 +50,16 @@ def evaluate(config,
     string.append('Recall@top1: {:.4f}'.format(CMC[top1]*100))
     string.append('AP: {:.4f}'.format(AP))             
         
-    print(' - '.join(string)) 
-    
+    result_str = ' - '.join(string)
+    print(result_str)
+
     # cleanup and free memory on GPU
     if cleanup:
         del img_features_query, ids_query, img_features_gallery, ids_gallery
         gc.collect()
         #torch.cuda.empty_cache()
-    
-    return CMC[0]
+
+    return CMC[0], result_str
 
 
 def eval_query(qf,ql,gf,gl):

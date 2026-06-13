@@ -143,4 +143,3 @@ if __name__ == '__main__':
                        ranks=[1, 5, 10],
                        step_size=1000,
                        cleanup=True)
- 
